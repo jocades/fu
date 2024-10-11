@@ -39,8 +39,7 @@ type Location = (&'static str, u32, u32);
 /// This struct is used to represent errors with additional context like the file name,
 /// line, and column where the error occurred, along with a user-defined message.
 pub struct Error {
-    context: Option<String>,
-    source: Option<Box<dyn StdError + Send + Sync>>,
+    message: Option<String>,
     location: Location,
 }
 
@@ -53,69 +52,24 @@ impl Error {
     /// let err = Error::new(Some("oops"), ("main.rs", 10, 15));
     /// println!("{}", err); // oops    main.rs:[10:15]
     /// ```
-    pub fn new<S: Into<String>>(context: Option<S>, location: Location) -> Self {
+    pub fn new<S: Into<String>>(message: Option<S>, location: Location) -> Self {
         Error {
-            context: context.map(|c| c.into()),
+            message: message.map(|c| c.into()),
             location,
-            source: None,
         }
-    }
-
-    pub fn context<C: Into<String>>(mut self, context: C) -> Self {
-        self.context = Some(context.into());
-        self
-    }
-
-    /// Wraps an existing error with additional context.
-    pub fn chain<E>(mut self, source: E) -> Self
-    where
-        E: StdError + Send + Sync + 'static,
-    {
-        self.source = Some(Box::new(source));
-        self
-    }
-
-    pub fn chain_iter(&self) -> ChainIter<'_> {
-        ChainIter {
-            current: Some(self),
-        }
-    }
-}
-
-pub struct ChainIter<'a> {
-    current: Option<&'a dyn StdError>,
-}
-
-impl<'a> Iterator for ChainIter<'a> {
-    type Item = &'a dyn StdError;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.current?;
-        self.current = current.source();
-        Some(current)
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (i, e) in self.chain_iter().enumerate() {
-            if i > 0 {
-                writeln!(f)?;
-            }
-            if i == 0 {
-                if let Some(context) = &self.context {
-                    write!(f, "{}    ", context)?;
-                }
-                write!(
-                    f,
-                    "\x1b[90m{}:[{}:{}]\x1b[0m",
-                    self.location.0, self.location.1, self.location.2
-                )?;
-            } else {
-                write!(f, "Caused by: {}", e)?;
-            }
+        if let Some(msg) = &self.message {
+            write!(f, "{}    ", msg)?;
         }
-        Ok(())
+        write!(
+            f,
+            "\x1b[90m{}:[{}:{}]\x1b[0m",
+            self.location.0, self.location.1, self.location.2
+        )
     }
 }
 
@@ -125,28 +79,19 @@ impl std::fmt::Debug for Error {
     }
 }
 
-impl StdError for Error {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.source
-            .as_ref()
-            .map(|s| s.as_ref() as &(dyn StdError + 'static))
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::new(Some(err.to_string()), (file!(), line!(), column!()))
     }
 }
 
-pub trait Wrap<T, E> {
-    fn wrap<C: Into<String>>(self, context: C) -> std::result::Result<T, Error>;
-}
-
-impl<T, E> Wrap<T, E> for std::result::Result<T, E>
-where
-    E: StdError + Send + Sync + 'static,
-{
-    fn wrap<C: Into<String>>(self, ctx: C) -> std::result::Result<T, Error> {
-        self.map_err(|e| {
-            Error::new(Some(ctx), (std::file!(), std::line!(), std::column!())).chain(e)
-        })
+impl From<std::num::ParseIntError> for Error {
+    fn from(err: std::num::ParseIntError) -> Self {
+        Error::new(Some(err.to_string()), (file!(), line!(), column!()))
     }
 }
+
+impl StdError for Error {}
 
 /// [`Result`]<T, [`Error`]>.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -252,19 +197,5 @@ mod tests {
         assert!(example_function(-1).is_err());
         assert!(example_function(50).is_ok());
         assert!(example_function(101).is_err());
-    }
-
-    #[test]
-    fn test_file_not_found() -> Result<()> {
-        let res = std::fs::File::open("abc").wrap("wrapped");
-        let _ = res.inspect_err(|e| println!("\n{e}"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_wrap() -> Result<()> {
-        let res: Result<()> = Err(error!("first"));
-        let _ = res.inspect_err(|e| println!("\n{e}"));
-        Ok(())
     }
 }
