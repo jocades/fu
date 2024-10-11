@@ -1,0 +1,7 @@
+[package]
+name = "fu"
+version = "0.1.0"
+authors = ["Jordi Calafat <jcalafat97@gmail.com>"]
+edition = "2021"
+
+license = "WTFPL"
