@@ -1,7 +1,8 @@
 [package]
 name = "fu"
+description = "Just an Error"
 version = "0.1.0"
 authors = ["Jordi Calafat <jcalafat97@gmail.com>"]
 edition = "2021"
-
 license = "WTFPL"
+repository = "https://github.com/jocades/fu"
