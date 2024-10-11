@@ -1,6 +1,6 @@
 //! # Fu
 //!
-//! Just an [`Error`] with its  and helpful macros.
+//! Just an [`Error`] with its location and helpful macros.
 //!
 //! - Custom `Error` type with file name, line, and column information.
 //! - Short and convenient macros: `error!`, `bail!`, and `ensure!`.
@@ -37,7 +37,7 @@
 pub struct Error {
     file: String,
     location: (u32, u32),
-    message: String,
+    message: Option<String>,
 }
 
 impl Error {
@@ -51,24 +51,28 @@ impl Error {
     /// # Examples
     /// ```
     /// # use fu::Error;
-    /// let err = Error::new("main.rs", (10, 15), "oops");
-    /// println!("{}", err); // Error: at main.rs:[10:15]: oops
+    /// let err = Error::new("main.rs", (10, 15), Some("oops"));
+    /// println!("{}", err); // oops    main.rs:[10:15]
     /// ```
-    pub fn new<S: Into<String>>(file: S, location: (u32, u32), message: S) -> Self {
+    pub fn new<S: Into<String>>(file: S, location: (u32, u32), message: Option<S>) -> Self {
         Error {
             file: file.into(),
             location,
-            message: message.into(),
+            message: message.map(|m| m.into()),
         }
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(msg) = &self.message {
+            write!(f, "{msg}    ")?;
+        }
+
         write!(
             f,
-            "{}    \x1b[90m{}:[{}:{}]\x1b[0m",
-            self.message, self.file, self.location.0, self.location.1
+            "\x1b[90m{}:[{}:{}]\x1b[0m",
+            self.file, self.location.0, self.location.1
         )
     }
 }
@@ -81,10 +85,11 @@ impl std::fmt::Debug for Error {
 
 impl std::error::Error for Error {}
 
-/// A type alias for a `Result` that uses the custom `Error` type.
+/// [`Result`]<T, [`Error`]>.
+///
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Macro to generate an [`Error`] and return an `Err` result.
+/// Construct a Result with the crates [`Error`] type.
 ///
 /// This macro uses the `file!()`, `line!()`, and `column!()` macros to automatically
 /// capture the file and location of the error.
@@ -97,33 +102,32 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ```
 #[macro_export]
 macro_rules! error {
-    ($msg:expr) => {
+    () => {
         Err($crate::Error::new(
             file!(),
             (line!(), column!()),
-            $msg,
+            None,
         ))
     };
-
     ($($arg:tt)*) => {
         Err($crate::Error::new(
             file!(),
             (line!(), column!()),
-            &format!($($arg)*),
+            Some(&format!($($arg)*)),
         ))
     };
 }
 
-/// Macro to return early with an error.
+/// Return early with an error.
 ///
 /// This macro behaves like the [`error!`] macro but immediately returns the error from the
-/// function, mimicking the behavior of `bail!` in the `anyhow` crate.
+/// function.
 ///
 /// # Example
 /// ```
 /// # use fu::*;
 /// fn example() -> Result<()> {
-///     bail!("an early exit error");
+///     bail!("an early exit error")
 /// }
 /// assert!(example().is_err());
 /// ```
@@ -134,7 +138,7 @@ macro_rules! bail {
     };
 }
 
-/// Macro to check a condition and return an error if the condition is false.
+/// Return early with an error if a condition is not satisfied.
 ///
 /// If the provided condition is not met, this macro will trigger a [`bail!`] with the given
 /// error message. It is a convenient way to validate inputs.
@@ -165,7 +169,7 @@ mod tests {
         ensure!(value >= 0, "value must be non-negative");
 
         if value > 100 {
-            bail!("value is too large");
+            bail!();
         }
 
         Ok(())
