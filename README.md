@@ -1,6 +1,6 @@
 # Fu
 
-Just an [`Error`] with its location and helpful macros.
+Just an `Error` with its location and helpful macros.
 
 - Custom `Error` type with file name, line, and column information.
 - Short and convenient macros: `error!`, `bail!`, and `ensure!`.
